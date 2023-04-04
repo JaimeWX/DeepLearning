@@ -1,5 +1,6 @@
 import os
 import math
+import time
 import tempfile
 import argparse
 
@@ -26,6 +27,7 @@ def main(args):
     rank = args.rank
     device = torch.device(args.device)
     batch_size = args.batch_size
+    print(batch_size)
     weights_path = args.weights
     args.lr *= args.world_size  # 学习率要根据并行GPU的数量进行倍增
     checkpoint_path = ""
@@ -67,12 +69,13 @@ def main(args):
 
     # 给每个rank对应的进程分配训练的样本索引
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_data_set)
+    print(train_sampler)
     val_sampler = torch.utils.data.distributed.DistributedSampler(val_data_set)
 
     # 将样本索引每batch_size个元素组成一个list
     train_batch_sampler = torch.utils.data.BatchSampler(
         train_sampler, batch_size, drop_last=True)
-
+    print(train_batch_sampler)
     nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers
     if rank == 0:
         print('Using {} dataloader workers every process'.format(nw))
@@ -129,6 +132,7 @@ def main(args):
     lf = lambda x: ((1 + math.cos(x * math.pi / args.epochs)) / 2) * (1 - args.lrf) + args.lrf  # cosine
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
+    start_time = time.time()
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch)
 
@@ -153,7 +157,8 @@ def main(args):
             tb_writer.add_scalar(tags[2], optimizer.param_groups[0]["lr"], epoch)
 
             torch.save(model.module.state_dict(), "./weights/model-{}.pth".format(epoch))
-
+    end_time = time.time()
+    print('Training using two gpus has been completed. (%.3fs)' % (end_time - start_time))
     # 删除临时缓存文件
     if rank == 0:
         if os.path.exists(checkpoint_path) is True:
@@ -166,7 +171,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--batch-size', type=int, default=16)
+    parser.add_argument('--batch-size', type=int, default=384)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lrf', type=float, default=0.1)
     # 是否启用SyncBatchNorm
@@ -174,11 +179,11 @@ if __name__ == '__main__':
 
     # 数据集所在根目录
     # https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz
-    parser.add_argument('--data-path', type=str, default="/home/wz/data_set/flower_data/flower_photos")
+    parser.add_argument('--data-path', type=str, default="/wx/Models_WX/DataSets/flower_data/flower_photos")
 
     # resnet34 官方权重下载地址
     # https://download.pytorch.org/models/resnet34-333f7ec4.pth
-    parser.add_argument('--weights', type=str, default='resNet34.pth',
+    parser.add_argument('--weights', type=str, default='init.pth',
                         help='initial weights path')
     parser.add_argument('--freeze-layers', type=bool, default=False)
     # 不要改该参数，系统会自动分配

@@ -10,11 +10,3 @@
 - 如果要使用```train_multi_gpu_using_spawn.py```脚本，使用以下指令启动
 - ```python train_multi_gpu_using_spawn.py```
 
-## 训练时间对比
-![training time](training_time.png)
-
-## 是否使用SyncBatchNorm
-![syncbn](syncbn.png)
-
-## 单GPU与多GPU训练曲线
-![accuracy](accuracy.png)
