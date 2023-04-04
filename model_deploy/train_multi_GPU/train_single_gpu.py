@@ -1,5 +1,6 @@
 import os
 import math
+import time
 import argparse
 
 import torch
@@ -69,13 +70,14 @@ def main(args):
                                              collate_fn=val_data_set.collate_fn)
 
     # 如果存在预训练权重则载入
-    model = resnet34(num_classes=args.num_classes).to(device)
+    model = resnet34(num_classes=args.num_classes)
     if args.weights != "":
         if os.path.exists(args.weights):
-            weights_dict = torch.load(args.weights, map_location=device)
+            weights_dict = torch.load(args.weights, map_location='cpu')
             load_weights_dict = {k: v for k, v in weights_dict.items()
                                  if model.state_dict()[k].numel() == v.numel()}
             print(model.load_state_dict(load_weights_dict, strict=False))
+            model.to(device)
         else:
             raise FileNotFoundError("not found weights file: {}".format(args.weights))
 
@@ -92,6 +94,7 @@ def main(args):
     lf = lambda x: ((1 + math.cos(x * math.pi / args.epochs)) / 2) * (1 - args.lrf) + args.lrf  # cosine
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
+    start_time = time.time()
     for epoch in range(args.epochs):
         # train
         mean_loss = train_one_epoch(model=model,
@@ -114,24 +117,28 @@ def main(args):
         tb_writer.add_scalar(tags[2], optimizer.param_groups[0]["lr"], epoch)
 
         torch.save(model.state_dict(), "./weights/model-{}.pth".format(epoch))
+    end_time = time.time()
+    print('Training using 4080 has been completed. (%.3fs)' % (start_time - end_time))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--batch-size', type=int, default=16)
+    parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lrf', type=float, default=0.1)
 
     # 数据集所在根目录
     # https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz
     parser.add_argument('--data-path', type=str,
-                        default="/home/w180662/my_project/my_github/data_set/flower_data/flower_photos")
+                        default="D:/Jaime/Datasets/flower_data/flower_photos")
+        # windows: "D:\Jaime\Datasets\flower_data\flower_photos"
+        # centos: "/wx/Models_WX/DataSets/flower_data/flower_photos"
 
     # resnet34 官方权重下载地址
     # https://download.pytorch.org/models/resnet34-333f7ec4.pth
-    parser.add_argument('--weights', type=str, default='resNet34.pth',
+    parser.add_argument('--weights', type=str, default='resNet34-pre.pth',
                         help='initial weights path')
     parser.add_argument('--freeze-layers', type=bool, default=False)
     parser.add_argument('--device', default='cuda', help='device id (i.e. 0 or 0,1 or cpu)')
